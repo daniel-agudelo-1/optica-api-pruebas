@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: optica-api
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      flask db upgrade
+    startCommand: gunicorn run:app --timeout 120 --workers 2
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: optica-database  # ← CAMBIA AQUÍ
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+
+databases:
+  - name: optica-database  # ← CAMBIA AQUÍ
+    databaseName: optica_db_yovp  # Nombre real de tu BD
+    plan: free
+    postgresMajorVersion: 14
