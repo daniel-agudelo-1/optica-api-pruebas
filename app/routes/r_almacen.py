@@ -213,16 +213,40 @@ def get_productos():
 
 @main_bp.route('/productos/lista-completa', methods=['GET'])
 def get_productos_lista_completa():
-    """NUEVO endpoint - No afecta a los existentes"""
+    """Endpoint con paginación para el frontend de productos"""
     try:
-        productos = Producto.query.options(
+        # Parámetros de paginación y filtros
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '')
+        categoria_id = request.args.get('categoria_id', type=int)
+        marca_id = request.args.get('marca_id', type=int)
+        
+        # Construir query base con joins
+        query = Producto.query.options(
             db.joinedload(Producto.marca),
             db.joinedload(Producto.categoria),
             db.joinedload(Producto.imagenes)
-        ).order_by(Producto.nombre.asc()).all()
+        )
         
+        # Aplicar filtros
+        if search:
+            query = query.filter(Producto.nombre.ilike(f'%{search}%'))
+        
+        if categoria_id:
+            query = query.filter(Producto.categoria_producto_id == categoria_id)
+        
+        if marca_id:
+            query = query.filter(Producto.marca_id == marca_id)
+        
+        # Paginación
+        pagination = query.order_by(Producto.nombre.asc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        # Serializar resultados
         result = []
-        for p in productos:
+        for p in pagination.items:
             result.append({
                 'id': p.id,
                 'nombre': p.nombre,
@@ -239,7 +263,15 @@ def get_productos_lista_completa():
                 'imagenes': [{'id': img.id, 'url': img.url} for img in p.imagenes]
             })
         
-        return jsonify(result)
+        return jsonify({
+            'data': result,
+            'total': pagination.total,
+            'page': pagination.page,
+            'per_page': pagination.per_page,
+            'total_pages': pagination.pages,
+            'has_next': pagination.has_next,
+            'has_prev': pagination.has_prev
+        })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -300,7 +332,7 @@ def verificar_existencia_producto():
         
     except Exception as e:
         return jsonify({'exists': False, 'error': str(e)}), 500
-        
+
 @main_bp.route('/productos/<int:id>/asociaciones', methods=['GET'])
 @permiso_requerido("productos")
 def get_producto_asociaciones(id):
