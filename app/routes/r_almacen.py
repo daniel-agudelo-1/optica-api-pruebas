@@ -206,73 +206,69 @@ def delete_categoria(id):
 @main_bp.route('/productos', methods=['GET'])
 def get_productos():
     try:
-        productos = Producto.query.order_by(Producto.nombre.asc()).all()
-        return jsonify([producto.to_dict() for producto in productos])
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 100, type=int)
+        
+        # Query con joins para evitar N+1
+        productos = Producto.query.filter_by(estado=True).options(
+            db.joinedload(Producto.marca),
+            db.joinedload(Producto.categoria),
+            db.joinedload(Producto.imagenes)
+        ).paginate(page=page, per_page=per_page, error_out=False)
+        
+        # Serializar manualmente con los datos ya cargados
+        result = []
+        for p in productos.items:
+            result.append({
+                'id': p.id,
+                'nombre': p.nombre,
+                'precio_venta': p.precio_venta,
+                'precio_compra': p.precio_compra,
+                'stock': p.stock,
+                'stock_minimo': p.stock_minimo,
+                'descripcion': p.descripcion,
+                'estado': p.estado,
+                'categoria_id': p.categoria_producto_id,
+                'categoria_nombre': p.categoria.nombre if p.categoria else None,
+                'marca_id': p.marca_id,
+                'marca_nombre': p.marca.nombre if p.marca else None,
+                'imagenes': [{'id': img.id, 'url': img.url} for img in p.imagenes]
+            })
+        
+        return jsonify({
+            'data': result,
+            'total': productos.total,
+            'page': productos.page,
+            'per_page': productos.per_page,
+            'total_pages': productos.pages
+        })
+        
     except Exception as e:
-        return jsonify({"error": "Error al obtener productos"}), 500
+        return jsonify({"error": f"Error: {str(e)}"}), 500
 
 
-@main_bp.route('/productos', methods=['POST'])
-@permiso_requerido("productos")
-def create_producto():
+@main_bp.route('/productos/verificar-existencia', methods=['GET'])
+def verificar_existencia_producto():
     try:
-        data = request.get_json()
-        required_fields = ['nombre', 'precio_venta', 'precio_compra', 'categoria_id', 'marca_id']
+        nombre = request.args.get('nombre', '').strip()
+        exclude_id = request.args.get('exclude_id', type=int)
         
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"El campo {field} es requerido"}), 400
+        if not nombre or len(nombre) < 3:
+            return jsonify({'exists': False})
         
-        p_venta = float(data['precio_venta'])
-        p_compra = float(data['precio_compra'])
-        
-        if p_venta < 0:
-            return jsonify({"error": "El precio de venta debe ser mayor a 0"}), 400
-        if p_compra < 0:
-            return jsonify({"error": "El precio de compra debe ser mayor a 0"}), 400
-        if p_venta < p_compra:
-            return jsonify({"error": "El precio de venta no puede ser menor al precio de compra"}), 400
-        
-        marca = Marca.query.get(data['marca_id'])
-        categoria = CategoriaProducto.query.get(data['categoria_id'])
-        
-        if not marca:
-            return jsonify({"error": "La marca seleccionada no existe"}), 400
-        if not categoria:
-            return jsonify({"error": "La categoría seleccionada no existe"}), 400
-        if not marca.estado:
-            return jsonify({"error": "No puedes crear productos con una marca inactiva"}), 400
-        if not categoria.estado:
-            return jsonify({"error": "No puedes crear productos con una categoría inactiva"}), 400
-        
-        stock = int(data.get('stock', 0))
-        if stock < 0:
-            return jsonify({"error": "El stock inicial no puede ser negativo"}), 400
-        
-        if Producto.query.filter(Producto.nombre.ilike(data['nombre'].strip())).first():
-            return jsonify({"error": "Ya existe un producto con este nombre"}), 400
-        
-        producto = Producto(
-            nombre=data['nombre'].strip(),
-            precio_venta=p_venta,
-            precio_compra=p_compra,
-            stock=stock,
-            stock_minimo=data.get('stock_minimo', 5),
-            descripcion=data.get('descripcion', ''),
-            categoria_producto_id=data['categoria_id'],
-            marca_id=data['marca_id'],
-            estado=data.get('estado', True)
+        query = Producto.query.filter(
+            db.func.lower(Producto.nombre) == db.func.lower(nombre)
         )
         
-        db.session.add(producto)
-        db.session.commit()
-        return jsonify({"message": "Producto creado", "producto": producto.to_dict()}), 201
+        if exclude_id:
+            query = query.filter(Producto.id != exclude_id)
         
-    except ValueError:
-        return jsonify({"error": "Los precios y stock deben ser números válidos"}), 400
+        exists = query.first() is not None
+        
+        return jsonify({'exists': exists})
+        
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Error al crear producto: {str(e)}"}), 500
+        return jsonify({'exists': False, 'error': str(e)}), 500
 
 
 @main_bp.route('/productos/<int:id>', methods=['PUT'])
