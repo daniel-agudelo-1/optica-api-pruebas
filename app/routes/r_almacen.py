@@ -260,6 +260,85 @@ def get_productos_lista_completa():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@main_bp.route('/productos/buscar-avanzado', methods=['GET'])
+def buscar_productos_avanzado():
+    """Endpoint optimizado para búsqueda con múltiples filtros"""
+    try:
+        # Obtener parámetros
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '', type=str).strip()
+        categoria_id = request.args.get('categoria_id', type=int)
+        marca_id = request.args.get('marca_id', type=int)
+        estado_param = request.args.get('estado', '', type=str)
+        
+        # Construir consulta base
+        query = Producto.query.options(
+            db.joinedload(Producto.marca),
+            db.joinedload(Producto.categoria),
+            db.joinedload(Producto.imagenes)
+        )
+        
+        # Aplicar filtros
+        if categoria_id:
+            query = query.filter(Producto.categoria_producto_id == categoria_id)
+        
+        if marca_id:
+            query = query.filter(Producto.marca_id == marca_id)
+        
+        if estado_param:
+            estado_bool = estado_param == 'activa'
+            query = query.filter(Producto.estado == estado_bool)
+        
+        # Búsqueda por nombre, marca o categoría
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    Producto.nombre.ilike(search_term),
+                    Producto.marca.has(Marca.nombre.ilike(search_term)),
+                    Producto.categoria.has(CategoriaProducto.nombre.ilike(search_term))
+                )
+            )
+        
+        # Ordenar y paginar
+        query = query.order_by(Producto.nombre.asc())
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        # Formatear resultados
+        result = []
+        for p in pagination.items:
+            result.append({
+                'id': p.id,
+                'nombre': p.nombre,
+                'precio_venta': p.precio_venta,
+                'precio_compra': p.precio_compra,
+                'stock': p.stock,
+                'stock_minimo': p.stock_minimo,
+                'descripcion': p.descripcion,
+                'estado': p.estado,
+                'categoria_id': p.categoria_producto_id,
+                'categoria_nombre': p.categoria.nombre if p.categoria else None,
+                'marca_id': p.marca_id,
+                'marca_nombre': p.marca.nombre if p.marca else None,
+                'imagenes': [{'id': img.id, 'url': img.url} for img in p.imagenes]
+            })
+        
+        return jsonify({
+            'data': result,
+            'pagination': {
+                'current_page': pagination.page,
+                'per_page': per_page,
+                'total': pagination.total,
+                'total_pages': pagination.pages,
+                'has_next': pagination.has_next,
+                'has_prev': pagination.has_prev
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @main_bp.route('/productos/lista-completa/<int:id>', methods=['GET'])
 def get_producto_lista_completa(id):
     """Nuevo endpoint para detalle de producto - evita múltiples peticiones"""
