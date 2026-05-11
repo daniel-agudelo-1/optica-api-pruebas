@@ -278,6 +278,29 @@ def get_producto_lista_completa(id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@main_bp.route('/productos/verificar-existencia', methods=['GET'])
+def verificar_existencia_producto():
+    try:
+        nombre = request.args.get('nombre', '').strip()
+        exclude_id = request.args.get('exclude_id', type=int)
+        
+        if not nombre or len(nombre) < 3:
+            return jsonify({'exists': False})
+        
+        query = Producto.query.filter(
+            db.func.lower(Producto.nombre) == db.func.lower(nombre)
+        )
+        
+        if exclude_id:
+            query = query.filter(Producto.id != exclude_id)
+        
+        exists = query.first() is not None
+        
+        return jsonify({'exists': exists})
+        
+    except Exception as e:
+        return jsonify({'exists': False, 'error': str(e)}), 500
+        
 @main_bp.route('/productos/<int:id>/asociaciones', methods=['GET'])
 @permiso_requerido("productos")
 def get_producto_asociaciones(id):
