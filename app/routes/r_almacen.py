@@ -213,7 +213,7 @@ def get_productos():
 
 @main_bp.route('/productos/lista-completa', methods=['GET'])
 def get_productos_lista_completa():
-    """Devuelve ARRAY (formato original) pero con paginación en HEADERS"""
+    """Devuelve objeto con paginación en el body"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
@@ -244,14 +244,18 @@ def get_productos_lista_completa():
                 'imagenes': [{'id': img.id, 'url': img.url} for img in p.imagenes]
             })
         
-        # ARRAY en el body (igual que antes)
-        # Metadata en los headers
-        return jsonify(result), 200, {
-            'X-Total-Count': str(pagination.total),
-            'X-Total-Pages': str(pagination.pages),
-            'X-Current-Page': str(pagination.page),
-            'X-Per-Page': str(per_page)
-        }
+        # ⭐ Enviar todo en el body - NO más headers
+        return jsonify({
+            'data': result,
+            'pagination': {
+                'current_page': pagination.page,
+                'per_page': per_page,
+                'total': pagination.total,
+                'total_pages': pagination.pages,
+                'has_next': pagination.has_next,
+                'has_prev': pagination.has_prev
+            }
+        })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
