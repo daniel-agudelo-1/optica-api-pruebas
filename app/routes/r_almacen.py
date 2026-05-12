@@ -221,7 +221,7 @@ def get_productos_lista_completa():
         query = Producto.query.options(
             db.joinedload(Producto.marca),
             db.joinedload(Producto.categoria),
-            # db.joinedload(Producto.imagenes)
+            db.joinedload(Producto.imagenes)
         ).order_by(Producto.nombre.asc())
         
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -241,7 +241,7 @@ def get_productos_lista_completa():
                 'categoria_nombre': p.categoria.nombre if p.categoria else None,
                 'marca_id': p.marca_id,
                 'marca_nombre': p.marca.nombre if p.marca else None,
-                # 'imagenes': [{'id': img.id, 'url': img.url} for img in p.imagenes]
+                'imagenes': [{'id': img.id, 'url': img.url} for img in p.imagenes]
             })
         
         # ⭐ Enviar todo en el body - NO más headers
